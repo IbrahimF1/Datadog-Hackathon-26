@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PeerCode — test console</title>
+    <title>PeerCode</title>
     <style>
       :root {
         --bg: #0f1115; --panel: #181b22; --line: #272b34;
         --txt: #e6e8ec; --muted: #8b93a1; --acc: #6ea8fe; --ok: #4ade80;
-        --warn: #fbbf24; --bad: #f87171;
+        --warn: #fbbf24; --bad: #f87171; --purple: #c4b5fd;
       }
       * { box-sizing: border-box; }
       body {
@@ -20,7 +20,7 @@
         display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
       }
       header h1 { font-size: 15px; margin: 0; color: var(--acc); }
-      header label { color: var(--muted); }
+      header .muted { color: var(--muted); }
       input, select, textarea, button {
         background: #0c0e12; color: var(--txt); border: 1px solid var(--line);
         border-radius: 6px; padding: 6px 8px; font: inherit;
@@ -28,107 +28,116 @@
       button { background: #20242d; cursor: pointer; }
       button:hover { border-color: var(--acc); }
       button.primary { background: var(--acc); color: #07101f; border-color: var(--acc); }
-      main { display: grid; grid-template-columns: 1.1fr 1fr 0.9fr; gap: 12px; padding: 12px; }
+      button:disabled { opacity: .5; cursor: default; }
+      select { min-width: 200px; }
+
+      main { display: grid; grid-template-columns: 320px 1fr 1fr; gap: 12px; padding: 12px; align-items: start; }
       .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
-      .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
-      .row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+      .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
+      .row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
       .row > * { flex: 1; min-width: 0; }
-      .kanban { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-      .col h3 { font-size: 10px; color: var(--muted); margin: 0 0 4px; text-transform: uppercase; }
-      .card { background: #0c0e12; border: 1px solid var(--line); border-radius: 6px; padding: 6px; margin-bottom: 6px; font-size: 11px; }
-      .card .a { color: var(--acc); }
-      .phase { border-left: 2px solid var(--acc); padding-left: 8px; margin-bottom: 10px; }
-      .lock, .delta, .debate { border: 1px solid var(--line); border-radius: 6px; padding: 6px; margin-bottom: 6px; font-size: 11px; }
-      .blocking { border-color: var(--bad); }
-      .feed { height: 280px; overflow: auto; background: #0c0e12; border-radius: 6px; padding: 8px; font-size: 11px; }
-      .feed .e { margin-bottom: 4px; }
-      .tag { display: inline-block; padding: 0 5px; border-radius: 4px; background: #20242d; color: var(--muted); font-size: 10px; }
       .muted { color: var(--muted); }
-      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
-      a.link { color: var(--acc); cursor: pointer; }
+
+      /* Setup */
+      .member { display: flex; gap: 6px; margin-bottom: 6px; }
+      .member input { flex: 1; }
+      .member .role { max-width: 110px; }
+
+      /* Roadmap tree */
+      .tree { position: relative; }
+      .phase { margin-bottom: 14px; }
+      .phase-head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+      .phase-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--acc); flex: none; }
+      .phase-body { margin-left: 4px; border-left: 2px solid var(--line); padding-left: 14px; margin-top: 6px; }
+      .node { position: relative; padding: 6px 8px; margin: 6px 0; background: #0c0e12; border: 1px solid var(--line); border-radius: 8px; }
+      .node::before { content: ""; position: absolute; left: -15px; top: 16px; width: 12px; height: 1px; background: var(--line); }
+      .node .t { font-size: 12px; }
+      .node .meta { color: var(--muted); font-size: 10px; margin-top: 2px; }
+      .deps { color: var(--purple); }
+
+      /* Kanban */
+      .kanban { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+      .col h3 { font-size: 10px; color: var(--muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: .05em; }
+      .col { background: #0c0e12; border: 1px solid var(--line); border-radius: 8px; padding: 8px; min-height: 80px; }
+      .card { background: #181b22; border: 1px solid var(--line); border-radius: 6px; padding: 6px; margin-bottom: 6px; font-size: 11px; }
+      .card .who { color: var(--acc); font-size: 10px; }
+
+      /* Decisions */
+      .decisions { grid-column: 1 / -1; }
+      .decisions-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; }
+      .decision { border-left: 3px solid var(--line); padding: 6px 10px; margin-bottom: 8px; background: #0c0e12; border-radius: 0 6px 6px 0; }
+      .decision.discovery { border-color: var(--acc); }
+      .decision.contract_change { border-color: var(--warn); }
+      .decision.dependency_found { border-color: var(--purple); }
+      .decision.scope_change { border-color: var(--bad); }
+      .decision .h { font-size: 11px; }
+      .decision .who { color: var(--acc); }
+      .decision .body { font-size: 12px; margin-top: 2px; }
+      .decision .when { color: var(--muted); font-size: 10px; }
+      .debate { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+      .debate .msg { font-size: 11px; padding: 3px 0; border-top: 1px dashed var(--line); }
+      .debate .msg .s { color: var(--purple); }
+      .badge { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 10px; background: #20242d; color: var(--muted); }
+      .badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); } .badge.bad { color: var(--bad); }
+      .feed { max-height: 200px; overflow: auto; font-size: 10px; color: var(--muted); }
+      .feed .e { padding: 1px 0; }
+      .editing { font-size: 10px; color: var(--warn); margin-bottom: 6px; }
+      .empty { color: var(--muted); font-style: italic; }
     </style>
   </head>
   <body>
     <header>
       <h1>PeerCode</h1>
-      <span><label>session</label> <input id="sessionId" value="alice" style="width:90px" /></span>
-      <span><label>project</label>
-        <select id="projectSel" style="min-width:220px"></select>
-      </span>
+      <span class="muted">project</span>
+      <select id="projectSel"></select>
       <button id="refreshBtn">refresh</button>
       <span id="status" class="muted"></span>
     </header>
 
     <main>
-      <!-- LEFT: project + roadmap + kanban -->
-      <section class="panel" style="grid-row: span 2">
-        <h2>Project</h2>
+      <!-- SETUP: project + team input only -->
+      <section class="panel" id="setup">
+        <h2>New project</h2>
         <div class="row"><input id="pName" placeholder="project name" /></div>
-        <div class="row"><textarea id="pDesc" placeholder="project description" rows="2"></textarea></div>
-        <div class="row"><input id="pTeam" placeholder='team e.g. Alice:backend:node,sql; Bob:frontend:react' /></div>
+        <div class="row"><textarea id="pDesc" rows="4" placeholder="describe the project goal…"></textarea></div>
+        <h2 style="margin-top:6px">Team members</h2>
+        <div id="members"></div>
+        <div class="row"><button id="addMember">+ add member</button></div>
         <div class="row">
-          <button class="primary" id="createBtn">create project</button>
-          <button id="decomposeBtn">decompose (Claude)</button>
+          <button class="primary" id="createBtn">create</button>
+          <button id="decomposeBtn">plan with Claude</button>
         </div>
-        <div id="questions"></div>
+        <p class="muted" id="setupHint" style="font-size:11px">
+          Create a project, then “plan with Claude” to generate the roadmap.
+        </p>
+      </section>
 
-        <h2 style="margin-top:14px">Roadmap</h2>
-        <div id="roadmap" class="muted">no project loaded</div>
+      <!-- ROADMAP TREE -->
+      <section class="panel">
+        <h2>Roadmap</h2>
+        <div id="editing" class="editing"></div>
+        <div id="tree" class="tree"><span class="empty">no project loaded</span></div>
+      </section>
 
-        <h2 style="margin-top:14px">Kanban</h2>
+      <!-- KANBAN -->
+      <section class="panel">
+        <h2>Board — progress</h2>
         <div id="kanban" class="kanban"></div>
       </section>
 
-      <!-- MIDDLE: locks + deltas + debates -->
-      <section class="panel">
-        <h2>File locks</h2>
-        <div class="row">
-          <input id="lockPath" placeholder="src/auth/login.ts" />
-          <input id="lockStart" placeholder="start" style="max-width:70px" />
-          <input id="lockEnd" placeholder="end" style="max-width:70px" />
+      <!-- AGENT DECISIONS (read-only) -->
+      <section class="panel decisions">
+        <h2>How the agents decided</h2>
+        <div class="decisions-grid">
+          <div>
+            <h2>Context decisions &amp; debates</h2>
+            <div id="decisions"><span class="empty">no agent activity yet</span></div>
+          </div>
+          <div>
+            <h2>Live activity</h2>
+            <div id="feed" class="feed"></div>
+          </div>
         </div>
-        <div class="row">
-          <input id="lockReason" placeholder="reason" />
-          <button id="lockBtn">acquire</button>
-        </div>
-        <div id="locks" class="muted">—</div>
-      </section>
-
-      <section class="panel">
-        <h2>Context deltas</h2>
-        <div class="row">
-          <select id="deltaType">
-            <option>discovery</option><option>contract_change</option>
-            <option>dependency_found</option><option>scope_change</option>
-          </select>
-          <select id="deltaSev"><option>info</option><option>warning</option><option>blocking</option></select>
-        </div>
-        <div class="row"><input id="deltaContent" placeholder="what changed" /></div>
-        <div class="row"><button id="deltaBtn">push delta</button></div>
-        <div id="deltas" class="muted">—</div>
-      </section>
-
-      <!-- RIGHT: debates + sync + feed -->
-      <section class="panel" style="grid-row: span 2">
-        <h2>Debates</h2>
-        <div class="row"><input id="debatePos" placeholder="your position" /></div>
-        <div class="row">
-          <input id="debateDelta" placeholder="conflicting deltaId (optional)" />
-          <button id="debateBtn">start</button>
-        </div>
-        <div id="debates" class="muted">—</div>
-
-        <h2 style="margin-top:14px">Sync (peer-progress)</h2>
-        <div class="row">
-          <button id="syncStart">start sync</button>
-          <input id="syncSha" placeholder="commit sha" />
-          <button id="syncDone">complete</button>
-        </div>
-        <div id="syncOut" class="muted">—</div>
-
-        <h2 style="margin-top:14px">Live event feed (WebSocket)</h2>
-        <div id="feed" class="feed"></div>
       </section>
     </main>
 

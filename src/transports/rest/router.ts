@@ -160,10 +160,6 @@ export function buildRestRouter(s: Services): Router {
     }
   });
 
-  r.get("/projects/:id/sync/status", async (_req, res) => {
-    res.json(await s.sync.remoteStatus());
-  });
-
   // --- Conflicts ---
   r.get("/projects/:id/conflicts", (req, res) => {
     const deltas = s.delta

@@ -3,7 +3,6 @@ import type { LiveStore } from "../storage/liveStore.js";
 import { ClickHouseStreamStore } from "../storage/clickhouseStreamStore.js";
 import type { StreamStore } from "../storage/streamStore.js";
 import { AnthropicClient } from "../integrations/anthropicClient.js";
-import { GitHubClient } from "../integrations/githubClient.js";
 import { NimbleClient } from "../integrations/nimbleClient.js";
 import { EventBus } from "./eventBus.js";
 import { ProjectService } from "./projectService.js";
@@ -41,7 +40,6 @@ export function buildServices(): Services {
 
   const nimble = new NimbleClient();
   const anthropic = new AnthropicClient(nimble);
-  const github = new GitHubClient();
 
   const project = new ProjectService(liveStore);
   const task = new TaskService(liveStore, bus);
@@ -49,7 +47,7 @@ export function buildServices(): Services {
   const delta = new DeltaService(liveStore, bus, streamStore);
   const debate = new DebateService(liveStore, bus, streamStore);
   const planning = new PlanningService(liveStore, anthropic, bus);
-  const sync = new SyncCoordinationService(liveStore, bus, streamStore, github);
+  const sync = new SyncCoordinationService(liveStore, bus, streamStore);
   const presence = new PresenceService(liveStore, bus);
   const sweeper = new Sweeper(liveStore, bus, debate);
 

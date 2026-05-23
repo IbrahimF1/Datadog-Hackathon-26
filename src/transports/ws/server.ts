@@ -8,7 +8,8 @@ export function attachWebSocket(httpServer: Server, services: Services): WebSock
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
   wss.on("connection", (ws, req) => {
-    const url = new URL(req.url ?? "", "http://localhost");
+    // Base host is irrelevant — only the path/query of the request matter.
+    const url = new URL(req.url ?? "", "http://ws-base");
     const projectId = url.searchParams.get("projectId");
     if (!projectId) {
       ws.close(1008, "projectId query param required");

@@ -1,5 +1,4 @@
 const $ = (id) => document.getElementById(id);
-const sessionId = () => $("sessionId").value.trim() || "anon";
 let currentProject = null;
 let ws = null;
 
@@ -12,7 +11,7 @@ function setStatus(msg, bad) {
 async function api(method, path, body) {
   const res = await fetch("/api" + path, {
     method,
-    headers: { "Content-Type": "application/json", "x-session-id": sessionId() },
+    headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
@@ -25,215 +24,187 @@ async function api(method, path, body) {
   return data;
 }
 
-// ---- projects ----
+// ---------- setup: project + team ----------
+function memberRow(name = "", role = "fullstack", skills = "") {
+  const div = document.createElement("div");
+  div.className = "member";
+  div.innerHTML = `
+    <input class="m-name" placeholder="name" value="${esc(name)}" />
+    <select class="role">
+      ${["frontend", "backend", "devops", "fullstack"]
+        .map((r) => `<option ${r === role ? "selected" : ""}>${r}</option>`)
+        .join("")}
+    </select>
+    <input class="m-skills" placeholder="skills (comma sep)" value="${esc(skills)}" />`;
+  return div;
+}
+
+function readTeam() {
+  return [...document.querySelectorAll("#members .member")]
+    .map((row) => ({
+      name: row.querySelector(".m-name").value.trim(),
+      role: row.querySelector(".role").value,
+      skills: row.querySelector(".m-skills").value.split(",").map((s) => s.trim()).filter(Boolean),
+    }))
+    .filter((m) => m.name);
+}
+
 async function loadProjects() {
   const projects = await api("GET", "/projects");
   const sel = $("projectSel");
-  sel.innerHTML = "";
+  sel.innerHTML = `<option value="">— select —</option>`;
   for (const p of projects) {
     const o = document.createElement("option");
     o.value = p.id;
     o.textContent = `${p.name} (${p.status})`;
     sel.appendChild(o);
   }
-  if (projects.length && !currentProject) selectProject(projects[0].id);
-}
-
-function parseTeam(str) {
-  return str
-    .split(";")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((entry) => {
-      const [name, role, skills] = entry.split(":");
-      return {
-        name: (name || "").trim(),
-        role: (role || "fullstack").trim(),
-        skills: (skills || "").split(",").map((s) => s.trim()).filter(Boolean),
-      };
-    });
+  if (currentProject) sel.value = currentProject;
 }
 
 async function createProject() {
-  const body = {
-    name: $("pName").value,
-    description: $("pDesc").value,
-    team: parseTeam($("pTeam").value),
-  };
+  const body = { name: $("pName").value, description: $("pDesc").value, team: readTeam() };
+  if (!body.name.trim()) return setStatus("project name required", true);
   const p = await api("POST", "/projects", body);
   await loadProjects();
   selectProject(p.id);
+  $("setupHint").textContent = `Created “${p.name}”. Click “plan with Claude” to generate the roadmap.`;
 }
 
 async function decompose() {
-  if (!currentProject) return;
-  setStatus("decomposing via Claude… (needs ANTHROPIC_API_KEY)");
-  await api("PUT", `/projects/${currentProject}/decompose`);
-  await selectProject(currentProject);
+  if (!currentProject) return setStatus("select or create a project first", true);
+  setStatus("planning via Claude… (needs ANTHROPIC_API_KEY)");
+  $("decomposeBtn").disabled = true;
+  try {
+    await api("PUT", `/projects/${currentProject}/decompose`);
+    await refresh();
+  } finally {
+    $("decomposeBtn").disabled = false;
+  }
 }
 
 function selectProject(id) {
-  currentProject = id;
-  $("projectSel").value = id;
-  connectWs(id);
-  return refresh();
+  currentProject = id || null;
+  $("projectSel").value = id || "";
+  if (currentProject) {
+    connectWs(currentProject);
+    refresh();
+  }
 }
+
+// ---------- render ----------
+let teamById = {};
 
 async function refresh() {
   if (!currentProject) return;
   const state = await api("GET", `/projects/${currentProject}`);
-  renderRoadmap(state);
+  teamById = Object.fromEntries(state.project.team.map((m) => [m.id, m]));
+  renderTree(state);
   renderKanban(state.tasks);
-  renderLocks(state.locks);
-  renderDeltas(state.deltas);
-  renderDebates(state.debates);
-  renderQuestions(state.project);
+  renderEditing(state.locks, state.sessions);
+  renderDecisions(state.deltas, state.debates);
 }
 
-// ---- renderers ----
-function renderQuestions(project) {
-  const el = $("questions");
-  const qs = (project.questions || []).filter((q) => !q.answer);
-  if (!qs.length) { el.innerHTML = ""; return; }
-  el.innerHTML = `<h2 style="margin-top:12px">Planning questions</h2>` +
-    qs.map((q) => `<div class="card">${esc(q.question)}</div>`).join("");
+const who = (id) => (teamById[id] ? teamById[id].name : id ? id.slice(0, 8) : "unassigned");
+
+function renderTree(state) {
+  const el = $("tree");
+  if (!state.phases.length) {
+    el.innerHTML = '<span class="empty">no roadmap yet — run “plan with Claude”</span>';
+    return;
+  }
+  const titleById = Object.fromEntries(state.tasks.map((t) => [t.id, t.title]));
+  el.innerHTML = state.phases.map((ph) => {
+    const tasks = state.tasks.filter((t) => t.phaseId === ph.id);
+    const mp = ph.mergePoint && ph.mergePoint.reached
+      ? '<span class="badge ok">merge point reached</span>'
+      : ph.contractsLocked ? '<span class="badge warn">contracts locked</span>' : "";
+    return `
+      <div class="phase">
+        <div class="phase-head"><span class="phase-dot"></span>${esc(ph.name)} ${mp}</div>
+        <div class="phase-body">
+          ${tasks.map((t) => `
+            <div class="node">
+              <div class="t">${esc(t.title)} <span class="badge">${t.status.replace("_", " ")}</span></div>
+              <div class="meta">
+                ${t.assigneeId ? `→ ${esc(who(t.assigneeId))}` : "unassigned"}
+                ${t.dependencies.length ? ` · <span class="deps">depends on: ${t.dependencies.map((d) => esc(titleById[d] || d)).join(", ")}</span>` : ""}
+                ${t.interfaceContracts.length ? ` · ${t.interfaceContracts.length} contract(s)` : ""}
+              </div>
+            </div>`).join("")}
+        </div>
+      </div>`;
+  }).join("");
 }
 
-function renderRoadmap(state) {
-  const el = $("roadmap");
-  if (!state.phases.length) { el.innerHTML = '<span class="muted">no phases — run decompose</span>'; return; }
-  const tasksByPhase = (pid) => state.tasks.filter((t) => t.phaseId === pid);
-  el.innerHTML = state.phases.map((ph) => `
-    <div class="phase">
-      <strong>${esc(ph.name)}</strong>
-      ${ph.mergePoint && ph.mergePoint.reached ? '<span class="tag" style="color:var(--ok)">merge point reached</span>' : ph.contractsLocked ? '<span class="tag" style="color:var(--warn)">contracts locked</span>' : ""}
-      ${tasksByPhase(ph.id).map((t) => `<div class="card">${esc(t.title)} <span class="tag">${t.status}</span></div>`).join("")}
-    </div>`).join("");
-}
-
-const COLS = ["todo", "in_progress", "review", "merge_point", "done"];
+const COLS = [["todo", "todo"], ["in_progress", "in progress"], ["review", "review"], ["merge_point", "merge point"], ["done", "done"]];
 function renderKanban(tasks) {
-  $("kanban").innerHTML = COLS.map((c) => `
-    <div class="col"><h3>${c.replace("_", " ")}</h3>
-      ${tasks.filter((t) => t.status === c).map((t) => `
+  $("kanban").innerHTML = COLS.map(([key, label]) => `
+    <div class="col">
+      <h3>${label}</h3>
+      ${tasks.filter((t) => t.status === key).map((t) => `
         <div class="card">
           <div>${esc(t.title)}</div>
-          <a class="link" onclick="advance('${t.id}','${c}')">advance →</a>
-        </div>`).join("")}
+          <div class="who">${esc(who(t.assigneeId))}</div>
+        </div>`).join("") || '<span class="empty"></span>'}
     </div>`).join("");
 }
 
-window.advance = async (taskId, from) => {
-  const next = COLS[Math.min(COLS.indexOf(from) + 1, COLS.length - 1)];
-  await api("PUT", `/projects/${currentProject}/tasks/${taskId}/status`, { status: next });
-  refresh();
-};
-
-function renderLocks(locks) {
-  const el = $("locks");
-  if (!locks.length) { el.innerHTML = '<span class="muted">no locks</span>'; return; }
-  el.innerHTML = locks.map((l) => `
-    <div class="lock">
-      <span class="a">${esc(l.path)}${l.lineStart != null ? `:${l.lineStart}-${l.lineEnd ?? l.lineStart}` : ""}</span>
-      <span class="tag">${esc(l.lockedBy)}</span>
-      <a class="link" onclick="releaseLock('${l.lockId}')">release</a>
-    </div>`).join("");
+function renderEditing(locks, sessions) {
+  const online = sessions.map((s) => who(s.memberId) || s.id).join(", ");
+  const editing = locks.map((l) =>
+    `${esc(who(l.lockedBy) || l.lockedBy)} → ${esc(l.path)}${l.lineStart != null ? `:${l.lineStart}-${l.lineEnd ?? l.lineStart}` : ""}`
+  );
+  $("editing").innerHTML =
+    (sessions.length ? `online: ${esc(online)}` : "") +
+    (editing.length ? ` · editing: ${editing.join("; ")}` : "");
 }
 
-window.releaseLock = async (lockId) => {
-  await api("DELETE", `/projects/${currentProject}/tasks/x/lock`, { lockId });
-  refresh();
-};
+// Read-only view of how agents reasoned: context deltas + debate negotiations.
+function renderDecisions(deltas, debates) {
+  const el = $("decisions");
+  const items = [];
 
-function renderDeltas(deltas) {
-  const el = $("deltas");
-  if (!deltas.length) { el.innerHTML = '<span class="muted">no deltas</span>'; return; }
-  el.innerHTML = deltas.slice().reverse().map((d) => `
-    <div class="delta ${d.severity === "blocking" ? "blocking" : ""}">
-      <span class="tag">${d.type}</span> <span class="tag">${d.severity}</span>
-      ${d.conflictsWith.length ? `<span class="tag" style="color:var(--bad)">conflicts: ${d.conflictsWith.length}</span>` : ""}
-      <div>${esc(d.content)}</div>
-      <div class="muted">${esc(d.sourceSessionId)} · ${shortId(d.id)}
-        <a class="link" onclick="ackDelta('${d.id}')">ack</a></div>
-    </div>`).join("");
+  for (const d of deltas) {
+    items.push({
+      ts: d.timestamp,
+      html: `
+        <div class="decision ${d.type}">
+          <div class="h"><span class="who">${esc(who(d.sourceSessionId) || d.sourceSessionId)}</span>
+            <span class="badge">${d.type.replace("_", " ")}</span>
+            <span class="badge ${d.severity === "blocking" ? "bad" : d.severity === "warning" ? "warn" : ""}">${d.severity}</span>
+            ${d.conflictsWith.length ? `<span class="badge bad">conflicts: ${d.conflictsWith.length}</span>` : ""}
+            ${d.acknowledgedBy.length ? `<span class="badge ok">ack ${d.acknowledgedBy.length}</span>` : ""}
+          </div>
+          <div class="body">${esc(d.content)}</div>
+          <div class="when">${fmt(d.timestamp)}</div>
+        </div>`,
+    });
+  }
+
+  for (const db of debates) {
+    const status = db.status === "resolved" ? "ok" : db.status === "escalated" ? "bad" : "warn";
+    items.push({
+      ts: db.createdAt,
+      html: `
+        <div class="debate">
+          <div class="h">💬 <strong>${esc(db.topic)}</strong>
+            <span class="badge ${status}">${db.status} · round ${db.round}</span></div>
+          ${db.messages.map((m) => `<div class="msg"><span class="s">${esc(who(m.sessionId) || m.sessionId)}:</span> ${esc(m.message)}</div>`).join("")}
+          ${db.proposedResolution ? `<div class="msg"><span class="badge ok">resolution</span> ${esc(db.proposedResolution)}</div>` : ""}
+        </div>`,
+    });
+  }
+
+  if (!items.length) {
+    el.innerHTML = '<span class="empty">no agent activity yet — agents push context deltas and open debates via MCP as they work</span>';
+    return;
+  }
+  items.sort((a, b) => b.ts.localeCompare(a.ts));
+  el.innerHTML = items.map((i) => i.html).join("");
 }
 
-window.ackDelta = async (deltaId) => {
-  await api("POST", `/mcp/context/${currentProject}/${deltaId}/ack`);
-  refresh();
-};
-
-function renderDebates(debates) {
-  const el = $("debates");
-  if (!debates.length) { el.innerHTML = '<span class="muted">no debates</span>'; return; }
-  el.innerHTML = debates.map((d) => `
-    <div class="debate">
-      <span class="tag">${d.status}</span> round ${d.round} · ${esc(d.topic)}
-      <div class="muted">${shortId(d.id)}</div>
-      ${d.status === "active" ? `
-        <div class="row" style="margin-top:4px">
-          <input id="resp_${d.id}" placeholder="response" />
-          <button onclick="respond('${d.id}')">reply</button>
-          <button onclick="respond('${d.id}', true)">resolve</button>
-        </div>` : ""}
-    </div>`).join("");
-}
-
-window.respond = async (debateId, resolve) => {
-  const msg = $(`resp_${debateId}`).value || (resolve ? "I agree, let's resolve." : "...");
-  await api("POST", "/mcp/debate", {
-    action: "respond", projectId: currentProject, debateId,
-    message: msg, proposeResolution: !!resolve,
-  });
-  refresh();
-};
-
-// ---- actions ----
-async function acquireLock() {
-  const body = {
-    path: $("lockPath").value,
-    lineStart: $("lockStart").value ? Number($("lockStart").value) : undefined,
-    lineEnd: $("lockEnd").value ? Number($("lockEnd").value) : undefined,
-    reason: $("lockReason").value,
-  };
-  await api("PUT", `/projects/${currentProject}/tasks/x/lock`, body);
-  refresh();
-}
-
-async function pushDelta() {
-  await api("POST", "/mcp/context", {
-    projectId: currentProject,
-    type: $("deltaType").value,
-    severity: $("deltaSev").value,
-    content: $("deltaContent").value,
-  });
-  $("deltaContent").value = "";
-  refresh();
-}
-
-async function startDebate() {
-  await api("POST", "/mcp/debate", {
-    projectId: currentProject,
-    position: $("debatePos").value,
-    conflictingDeltaId: $("debateDelta").value || undefined,
-    constraints: [], proposedAlternatives: [],
-  });
-  refresh();
-}
-
-async function syncStart() {
-  const out = await api("POST", `/projects/${currentProject}/sync`, { action: "start" });
-  $("syncOut").innerHTML = `<pre>${esc(JSON.stringify(out, null, 2))}</pre>`;
-}
-async function syncDone() {
-  const out = await api("POST", `/projects/${currentProject}/sync`, {
-    action: "complete", commitSha: $("syncSha").value || ("sha-" + Date.now()),
-  });
-  $("syncOut").innerHTML = `<pre>${esc(JSON.stringify(out, null, 2))}</pre>`;
-  refresh();
-}
-
-// ---- websocket ----
+// ---------- websocket (live, read-only) ----------
 function connectWs(projectId) {
   if (ws) ws.close();
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -243,29 +214,29 @@ function connectWs(projectId) {
     const feed = $("feed");
     const div = document.createElement("div");
     div.className = "e";
-    div.innerHTML = `<span class="tag">${e.event}</span> ${esc(JSON.stringify(e.payload || {}).slice(0, 160))}`;
+    div.textContent = `${fmt(e.ts || new Date().toISOString())} · ${e.event}`;
     feed.prepend(div);
-    if (["task_update", "lock_changed", "delta_received", "debate_update", "sync_complete"].includes(e.event)) {
+    if (["task_update", "lock_changed", "delta_received", "debate_update", "sync_complete", "presence"].includes(e.event)) {
       refresh();
     }
   };
 }
 
-// ---- utils ----
+// ---------- utils ----------
 function esc(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
-function shortId(s) { return String(s).slice(0, 14); }
+function fmt(iso) {
+  try { return new Date(iso).toLocaleTimeString(); } catch { return iso; }
+}
 
-// ---- wire up ----
-$("refreshBtn").onclick = refresh;
+// ---------- wire up ----------
+$("addMember").onclick = () => $("members").appendChild(memberRow());
 $("createBtn").onclick = createProject;
 $("decomposeBtn").onclick = decompose;
+$("refreshBtn").onclick = refresh;
 $("projectSel").onchange = (e) => selectProject(e.target.value);
-$("lockBtn").onclick = acquireLock;
-$("deltaBtn").onclick = pushDelta;
-$("debateBtn").onclick = startDebate;
-$("syncStart").onclick = syncStart;
-$("syncDone").onclick = syncDone;
 
+$("members").appendChild(memberRow("Alice", "backend", "node, postgres"));
+$("members").appendChild(memberRow("Bob", "frontend", "react"));
 loadProjects().catch((e) => setStatus(e.message, true));

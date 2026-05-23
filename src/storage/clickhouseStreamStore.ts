@@ -8,20 +8,27 @@ import type {
 } from "./streamStore.js";
 
 export class ClickHouseStreamStore implements StreamStore {
-  private client: ClickHouseClient;
+  private client: ClickHouseClient | null;
   private ready = false;
   private readonly db = config.clickhouse.database;
 
   constructor() {
-    this.client = createClient({
-      url: config.clickhouse.url,
-      username: config.clickhouse.username,
-      password: config.clickhouse.password,
-      // database is created in init(); connect without it first
-    });
+    // No URL -> no client (avoid the @clickhouse/client default local endpoint).
+    this.client = config.clickhouse.url
+      ? createClient({
+          url: config.clickhouse.url,
+          username: config.clickhouse.username,
+          password: config.clickhouse.password,
+          // database is created in init(); connect without it first
+        })
+      : null;
   }
 
   async init(): Promise<void> {
+    if (!this.client) {
+      console.warn("[clickhouse] CLICKHOUSE_URL not set; stream logging disabled");
+      return;
+    }
     try {
       await this.client.command({
         query: `CREATE DATABASE IF NOT EXISTS ${this.db}`,
@@ -75,7 +82,7 @@ export class ClickHouseStreamStore implements StreamStore {
   }
 
   private async insert(table: string, row: Record<string, unknown>): Promise<void> {
-    if (!this.ready) return;
+    if (!this.ready || !this.client) return;
     try {
       await this.client.insert({
         table: `${this.db}.${table}`,
@@ -139,7 +146,7 @@ export class ClickHouseStreamStore implements StreamStore {
   }
 
   async recentEvents(projectId: string, limit: number): Promise<StreamEvent[]> {
-    if (!this.ready) return [];
+    if (!this.ready || !this.client) return [];
     try {
       const rs = await this.client.query({
         query: `

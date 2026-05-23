@@ -17,7 +17,6 @@
     "@anthropic-ai/sdk": "^0.98.0",
     "@clickhouse/client": "^1.18.5",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@octokit/rest": "^22.0.1",
     "dd-trace": "^5.104.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

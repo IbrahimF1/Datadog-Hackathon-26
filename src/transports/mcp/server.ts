@@ -254,18 +254,21 @@ export function buildMcpServer(services: Services): McpServer {
       ),
   );
 
-  server.registerTool(
-    "peercode_web_search",
-    {
-      description:
-        "Search the web via Nimble. Use ONLY during debates (to resolve technical disagreements with current facts) or planning Q&A — not for general lookups.",
-      inputSchema: { sessionId: z.string().optional(), query: z.string(), limit: z.number().optional() },
-    },
-    (a) =>
-      invoke(services, "peercode_web_search", a, async () => ({
-        results: await services.nimble.search(a.query, a.limit ?? 5),
-      })),
-  );
+  // Nimble web search is only exposed when configured (debates/planning use).
+  if (services.nimble.available()) {
+    server.registerTool(
+      "peercode_web_search",
+      {
+        description:
+          "Search the web via Nimble. Use ONLY during debates (to resolve technical disagreements with current facts) or planning Q&A — not for general lookups.",
+        inputSchema: { sessionId: z.string().optional(), query: z.string(), limit: z.number().optional() },
+      },
+      (a) =>
+        invoke(services, "peercode_web_search", a, async () => ({
+          results: await services.nimble.search(a.query, a.limit ?? 5),
+        })),
+    );
+  }
 
   return server;
 }

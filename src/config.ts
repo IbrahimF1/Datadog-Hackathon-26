@@ -38,15 +38,12 @@ export const config = {
   },
 
   clickhouse: {
-    url: process.env.CLICKHOUSE_URL ?? "http://localhost:8123",
+    // Cloud-only: set CLICKHOUSE_URL to the HTTPS endpoint (e.g.
+    // https://<id>.<region>.clickhouse.cloud:8443). No local fallback.
+    url: process.env.CLICKHOUSE_URL ?? "",
     username: process.env.CLICKHOUSE_USER ?? "default",
     password: process.env.CLICKHOUSE_PASSWORD ?? "",
     database: process.env.CLICKHOUSE_DATABASE ?? "peercode",
-  },
-
-  github: {
-    token: process.env.GITHUB_TOKEN ?? "",
-    repo: process.env.GITHUB_REPO ?? "",
   },
 
   // Coordination constants (TECH_SPEC §5, §8)

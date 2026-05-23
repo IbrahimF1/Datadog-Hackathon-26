@@ -1,7 +1,6 @@
 import type { Phase, SyncToken } from "../domain/types.js";
 import type { LiveStore } from "../storage/liveStore.js";
 import type { StreamStore } from "../storage/streamStore.js";
-import type { GitHubClient } from "../integrations/githubClient.js";
 import { NotFoundError, SyncBusyError, ValidationError } from "./errors.js";
 import type { EventBus } from "./eventBus.js";
 import { now } from "../util/id.js";
@@ -21,7 +20,6 @@ export class SyncCoordinationService {
     private readonly store: LiveStore,
     private readonly bus: EventBus,
     private readonly stream: StreamStore,
-    private readonly github: GitHubClient,
   ) {}
 
   // A session is about to push: grant a serialized token + tell it what to pull.
@@ -94,23 +92,6 @@ export class SyncCoordinationService {
     if (token && token.sessionId === sessionId) {
       this.store.clearSyncToken(projectId);
     }
-  }
-
-  // Optional read-only peek at the real peer-progress branch to confirm sessions
-  // are in sync. Returns available:false when no GitHub token/repo is configured.
-  async remoteStatus(): Promise<{
-    available: boolean;
-    headSha: string | null;
-    recentCommits: string[];
-  }> {
-    if (!this.github.available()) {
-      return { available: false, headSha: null, recentCommits: [] };
-    }
-    const [headSha, recentCommits] = await Promise.all([
-      this.github.branchHeadSha(),
-      this.github.recentCommits(),
-    ]);
-    return { available: true, headSha, recentCommits };
   }
 
   // Merge-point barrier: all phase tasks at merge_point/done (locks contracts),
