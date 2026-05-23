@@ -4,137 +4,498 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PeerCode</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
       :root {
-        --bg: #0f1115; --panel: #181b22; --line: #272b34;
-        --txt: #e6e8ec; --muted: #8b93a1; --acc: #6ea8fe; --ok: #4ade80;
-        --warn: #fbbf24; --bad: #f87171; --purple: #c4b5fd;
+        --bg: #FAFAF7;
+        --surface: #FFFFFF;
+        --surface-alt: #F5F4F0;
+        --border: #E8E5DE;
+        --border-light: #F0EDE7;
+        --txt: #2C2A26;
+        --txt-secondary: #6B6760;
+        --muted: #9A9590;
+        --acc: #7B9E87;
+        --acc-light: #E8F0EA;
+        --ok: #7B9E87;
+        --ok-light: #E8F0EA;
+        --warn: #C4856A;
+        --warn-light: #F8EDE6;
+        --bad: #C47A7A;
+        --bad-light: #F8E8E8;
+        --purple: #7B7FD7;
+        --purple-light: #ECECFA;
+        --serif: 'Cormorant Garamond', 'Georgia', serif;
+        --sans: 'Outfit', -apple-system, 'Segoe UI', sans-serif;
+        --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+        --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
       }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0; background: var(--bg); color: var(--txt);
-        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-      }
-      header {
-        padding: 10px 16px; border-bottom: 1px solid var(--line);
-        display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
-      }
-      header h1 { font-size: 15px; margin: 0; color: var(--acc); }
-      header .muted { color: var(--muted); }
-      input, select, textarea, button {
-        background: #0c0e12; color: var(--txt); border: 1px solid var(--line);
-        border-radius: 6px; padding: 6px 8px; font: inherit;
-      }
-      button { background: #20242d; cursor: pointer; }
-      button:hover { border-color: var(--acc); }
-      button.primary { background: var(--acc); color: #07101f; border-color: var(--acc); }
-      button:disabled { opacity: .5; cursor: default; }
-      select { min-width: 200px; }
 
-      main { display: grid; grid-template-columns: 320px 1fr 1fr; gap: 12px; padding: 12px; align-items: start; }
-      .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
-      .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
-      .row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(16px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      @keyframes breathe {
+        0%, 100% { opacity: 0.5; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.15); }
+      }
+
+      @keyframes slideInLeft {
+        from { opacity: 0; transform: translateX(-12px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+
+      @keyframes cardIn {
+        from { opacity: 0; transform: translateY(8px) scale(0.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        background: var(--bg);
+        color: var(--txt);
+        font: 400 14px/1.6 var(--sans);
+        -webkit-font-smoothing: antialiased;
+        min-height: 100vh;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(ellipse at 20% 0%, rgba(123, 158, 135, 0.04) 0%, transparent 50%),
+                    radial-gradient(ellipse at 80% 100%, rgba(196, 133, 106, 0.03) 0%, transparent 50%);
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      header {
+        position: relative;
+        z-index: 1;
+        padding: 20px 32px;
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        flex-wrap: wrap;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+        animation: fadeIn 0.6s var(--ease-out-expo) both;
+      }
+
+      header h1 {
+        font-family: var(--serif);
+        font-size: 22px;
+        font-weight: 600;
+        color: var(--txt);
+        letter-spacing: -0.02em;
+        margin-right: 4px;
+      }
+
+      header .muted { color: var(--muted); font-size: 13px; }
+
+      .header-divider {
+        width: 1px;
+        height: 20px;
+        background: var(--border);
+      }
+
+      input, select, textarea {
+        background: var(--surface);
+        color: var(--txt);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 12px;
+        font: 400 13px/1.5 var(--sans);
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+      }
+
+      input:focus, select:focus, textarea:focus {
+        outline: none;
+        border-color: var(--acc);
+        box-shadow: 0 0 0 3px var(--acc-light);
+      }
+
+      textarea { resize: vertical; }
+
+      button {
+        background: var(--surface);
+        color: var(--txt);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 16px;
+        font: 500 13px/1.4 var(--sans);
+        cursor: pointer;
+        transition: all 0.25s var(--ease-out-quart);
+      }
+
+      button:hover {
+        border-color: var(--acc);
+        color: var(--acc);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(123, 158, 135, 0.12);
+      }
+
+      button:active { transform: translateY(0); }
+
+      button.primary {
+        background: var(--acc);
+        color: #fff;
+        border-color: var(--acc);
+      }
+
+      button.primary:hover {
+        background: #6B8E77;
+        color: #fff;
+        box-shadow: 0 4px 12px rgba(123, 158, 135, 0.25);
+      }
+
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+        transform: none;
+        box-shadow: none;
+      }
+
+      select { min-width: 220px; }
+
+      main {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        grid-template-columns: 340px 1fr 1fr;
+        gap: 20px;
+        padding: 24px 32px;
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 24px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02), 0 4px 16px rgba(0,0,0,0.02);
+        transition: box-shadow 0.4s ease;
+      }
+
+      .panel:hover {
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03), 0 8px 24px rgba(0,0,0,0.04);
+      }
+
+      .panel--setup { animation: fadeInUp 0.7s var(--ease-out-expo) 0.1s both; }
+      .panel--roadmap { animation: fadeInUp 0.7s var(--ease-out-expo) 0.2s both; }
+      .panel--kanban { animation: fadeInUp 0.7s var(--ease-out-expo) 0.3s both; }
+      .panel--decisions { animation: fadeInUp 0.7s var(--ease-out-expo) 0.4s both; }
+
+      .panel h2 {
+        font-family: var(--serif);
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--txt);
+        margin-bottom: 16px;
+        letter-spacing: -0.01em;
+      }
+
+      .panel .section-label {
+        font-family: var(--sans);
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--muted);
+        margin-bottom: 12px;
+      }
+
+      .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
       .row > * { flex: 1; min-width: 0; }
       .muted { color: var(--muted); }
 
-      /* Setup */
-      .member { display: flex; gap: 6px; margin-bottom: 6px; }
+      .member {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+        animation: fadeInUp 0.4s var(--ease-out-expo) both;
+      }
       .member input { flex: 1; }
-      .member .role { max-width: 110px; }
+      .member .role { max-width: 120px; }
 
-      /* Roadmap tree */
       .tree { position: relative; }
-      .phase { margin-bottom: 14px; }
-      .phase-head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-      .phase-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--acc); flex: none; }
-      .phase-body { margin-left: 4px; border-left: 2px solid var(--line); padding-left: 14px; margin-top: 6px; }
-      .node { position: relative; padding: 6px 8px; margin: 6px 0; background: #0c0e12; border: 1px solid var(--line); border-radius: 8px; }
-      .node::before { content: ""; position: absolute; left: -15px; top: 16px; width: 12px; height: 1px; background: var(--line); }
-      .node .t { font-size: 12px; }
-      .node .meta { color: var(--muted); font-size: 10px; margin-top: 2px; }
+
+      .phase {
+        margin-bottom: 20px;
+        animation: fadeInUp 0.5s var(--ease-out-expo) both;
+      }
+
+      .phase-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-family: var(--serif);
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .phase-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--acc);
+        flex: none;
+        animation: breathe 3s ease-in-out infinite;
+      }
+
+      .phase-body {
+        margin-left: 3px;
+        border-left: 1.5px solid var(--border-light);
+        padding-left: 18px;
+        margin-top: 8px;
+      }
+
+      .node {
+        position: relative;
+        padding: 10px 12px;
+        margin: 8px 0;
+        background: var(--surface-alt);
+        border: 1px solid var(--border-light);
+        border-radius: 10px;
+        transition: all 0.3s var(--ease-out-quart);
+        animation: cardIn 0.4s var(--ease-out-expo) both;
+      }
+
+      .node:hover {
+        border-color: var(--border);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      }
+
+      .node::before {
+        content: "";
+        position: absolute;
+        left: -19px;
+        top: 20px;
+        width: 16px;
+        height: 1px;
+        background: var(--border-light);
+      }
+
+      .node .t { font-size: 13px; font-weight: 500; }
+      .node .meta { color: var(--txt-secondary); font-size: 11px; margin-top: 3px; }
       .deps { color: var(--purple); }
 
-      /* Kanban */
-      .kanban { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-      .col h3 { font-size: 10px; color: var(--muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: .05em; }
-      .col { background: #0c0e12; border: 1px solid var(--line); border-radius: 8px; padding: 8px; min-height: 80px; }
-      .card { background: #181b22; border: 1px solid var(--line); border-radius: 6px; padding: 6px; margin-bottom: 6px; font-size: 11px; }
-      .card .who { color: var(--acc); font-size: 10px; }
+      .kanban {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 8px;
+      }
 
-      /* Decisions */
+      .col {
+        background: var(--surface-alt);
+        border: 1px solid var(--border-light);
+        border-radius: 10px;
+        padding: 10px;
+        min-height: 80px;
+        transition: background 0.3s ease;
+      }
+
+      .col h3 {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--muted);
+        margin: 0 0 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        padding: 8px 10px;
+        margin-bottom: 6px;
+        font-size: 12px;
+        transition: all 0.25s var(--ease-out-quart);
+        animation: cardIn 0.35s var(--ease-out-expo) both;
+      }
+
+      .card:hover {
+        border-color: var(--border);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+      }
+
+      .card .who { color: var(--acc); font-size: 10px; margin-top: 3px; }
+
       .decisions { grid-column: 1 / -1; }
-      .decisions-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; }
-      .decision { border-left: 3px solid var(--line); padding: 6px 10px; margin-bottom: 8px; background: #0c0e12; border-radius: 0 6px 6px 0; }
+      .decisions-grid {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 20px;
+      }
+
+      .decision {
+        border-left: 2px solid var(--border);
+        padding: 8px 14px;
+        margin-bottom: 10px;
+        background: var(--surface-alt);
+        border-radius: 0 10px 10px 0;
+        transition: all 0.3s ease;
+        animation: slideInLeft 0.4s var(--ease-out-expo) both;
+      }
+
+      .decision:hover { background: var(--surface); }
+
       .decision.discovery { border-color: var(--acc); }
       .decision.contract_change { border-color: var(--warn); }
       .decision.dependency_found { border-color: var(--purple); }
       .decision.scope_change { border-color: var(--bad); }
-      .decision .h { font-size: 11px; }
+      .decision .h { font-size: 12px; }
       .decision .who { color: var(--acc); }
-      .decision .body { font-size: 12px; margin-top: 2px; }
-      .decision .when { color: var(--muted); font-size: 10px; }
-      .debate { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-bottom: 8px; }
-      .debate .msg { font-size: 11px; padding: 3px 0; border-top: 1px dashed var(--line); }
+      .decision .body { font-size: 13px; margin-top: 3px; }
+      .decision .when { color: var(--muted); font-size: 11px; }
+
+      .debate {
+        border: 1px solid var(--border-light);
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 10px;
+        transition: border-color 0.3s ease;
+        animation: fadeInUp 0.4s var(--ease-out-expo) both;
+      }
+
+      .debate:hover { border-color: var(--border); }
+
+      .debate .msg {
+        font-size: 12px;
+        padding: 4px 0;
+        border-top: 1px solid var(--border-light);
+      }
+
       .debate .msg .s { color: var(--purple); }
-      .badge { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 10px; background: #20242d; color: var(--muted); }
-      .badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); } .badge.bad { color: var(--bad); }
-      .feed { max-height: 200px; overflow: auto; font-size: 10px; color: var(--muted); }
-      .feed .e { padding: 1px 0; }
-      .editing { font-size: 10px; color: var(--warn); margin-bottom: 6px; }
-      .empty { color: var(--muted); font-style: italic; }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 10px;
+        font-weight: 500;
+        background: var(--surface-alt);
+        color: var(--muted);
+        transition: all 0.2s ease;
+      }
+
+      .badge.ok { background: var(--ok-light); color: var(--ok); }
+      .badge.warn { background: var(--warn-light); color: var(--warn); }
+      .badge.bad { background: var(--bad-light); color: var(--bad); }
+
+      .feed {
+        max-height: 240px;
+        overflow: auto;
+        font-size: 11px;
+        color: var(--txt-secondary);
+      }
+
+      .feed .e {
+        padding: 4px 0;
+        border-bottom: 1px solid var(--border-light);
+        animation: slideInLeft 0.35s var(--ease-out-expo) both;
+      }
+
+      .editing {
+        font-size: 11px;
+        color: var(--txt-secondary);
+        margin-bottom: 8px;
+        padding: 6px 10px;
+        background: var(--acc-light);
+        border-radius: 8px;
+        display: inline-block;
+      }
+
+      .empty {
+        color: var(--muted);
+        font-style: italic;
+        font-size: 13px;
+      }
+
+      #setupHint {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+        margin-top: 8px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+
+      @media (max-width: 1024px) {
+        main {
+          grid-template-columns: 1fr;
+          padding: 16px;
+        }
+        .kanban { grid-template-columns: repeat(3, 1fr); }
+        .decisions-grid { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
     <header>
       <h1>PeerCode</h1>
+      <div class="header-divider"></div>
       <span class="muted">project</span>
       <select id="projectSel"></select>
-      <button id="refreshBtn">refresh</button>
+      <button id="refreshBtn">Refresh</button>
       <span id="status" class="muted"></span>
     </header>
 
     <main>
-      <!-- SETUP: project + team input only -->
-      <section class="panel" id="setup">
+      <section class="panel panel--setup" id="setup">
         <h2>New project</h2>
-        <div class="row"><input id="pName" placeholder="project name" /></div>
-        <div class="row"><textarea id="pDesc" rows="4" placeholder="describe the project goal…"></textarea></div>
-        <h2 style="margin-top:6px">Team members</h2>
+        <div class="row"><input id="pName" placeholder="Project name" /></div>
+        <div class="row"><textarea id="pDesc" rows="4" placeholder="Describe the project goal…"></textarea></div>
+        <div class="section-label" style="margin-top:8px">Team members</div>
         <div id="members"></div>
-        <div class="row"><button id="addMember">+ add member</button></div>
+        <div class="row"><button id="addMember">+ Add member</button></div>
         <div class="row">
-          <button class="primary" id="createBtn">create</button>
-          <button id="decomposeBtn">plan with Claude</button>
+          <button class="primary" id="createBtn">Create</button>
+          <button id="decomposeBtn">Plan with Claude</button>
         </div>
-        <p class="muted" id="setupHint" style="font-size:11px">
-          Create a project, then “plan with Claude” to generate the roadmap.
+        <p id="setupHint">
+          Create a project, then "Plan with Claude" to generate the roadmap.
         </p>
       </section>
 
-      <!-- ROADMAP TREE -->
-      <section class="panel">
+      <section class="panel panel--roadmap">
         <h2>Roadmap</h2>
         <div id="editing" class="editing"></div>
-        <div id="tree" class="tree"><span class="empty">no project loaded</span></div>
+        <div id="tree" class="tree"><span class="empty">No project loaded</span></div>
       </section>
 
-      <!-- KANBAN -->
-      <section class="panel">
-        <h2>Board — progress</h2>
+      <section class="panel panel--kanban">
+        <h2>Board — Progress</h2>
         <div id="kanban" class="kanban"></div>
       </section>
 
-      <!-- AGENT DECISIONS (read-only) -->
-      <section class="panel decisions">
-        <h2>How the agents decided</h2>
+      <section class="panel panel--decisions decisions">
+        <h2>Agent Activity</h2>
         <div class="decisions-grid">
           <div>
-            <h2>Context decisions &amp; debates</h2>
-            <div id="decisions"><span class="empty">no agent activity yet</span></div>
+            <div class="section-label">Context Decisions &amp; Debates</div>
+            <div id="decisions"><span class="empty">No agent activity yet</span></div>
           </div>
           <div>
-            <h2>Live activity</h2>
+            <div class="section-label">Live Activity</div>
             <div id="feed" class="feed"></div>
           </div>
         </div>
