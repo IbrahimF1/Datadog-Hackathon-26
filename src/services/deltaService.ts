@@ -26,10 +26,9 @@ export class DeltaService {
     private readonly stream: StreamStore,
   ) {}
 
-  push(p: PushDeltaParams): ContextDelta {
-    if (!this.store.getProject(p.projectId)) {
-      throw new NotFoundError("project");
-    }
+  async push(p: PushDeltaParams): Promise<ContextDelta> {
+    const project = await this.store.getProject(p.projectId);
+    if (!project) throw new NotFoundError("project");
     const affectedContracts = p.affectedContracts ?? [];
     const delta: ContextDelta = {
       id: newId("delta"),
@@ -41,7 +40,7 @@ export class DeltaService {
       severity: p.severity,
       affectedContracts,
       acknowledgedBy: [],
-      conflictsWith: this.detectConflicts(
+      conflictsWith: await this.detectConflicts(
         p.projectId,
         p.taskId,
         p.type,
@@ -50,13 +49,13 @@ export class DeltaService {
       timestamp: now(),
     };
 
-    this.store.addDelta(delta);
+    await this.store.addDelta(delta);
     void this.stream.appendDelta(delta);
 
     if (p.taskId) {
-      const task = this.store.getTask(p.taskId);
+      const task = await this.store.getTask(p.taskId);
       if (task) {
-        this.store.updateTask(p.taskId, {
+        await this.store.updateTask(p.taskId, {
           contextHistory: [...task.contextHistory, delta.id],
         });
       }
@@ -68,15 +67,16 @@ export class DeltaService {
 
   // Rule-based first pass: a contract_change referencing contract ids/names
   // conflicts with any OTHER non-done task whose interfaceContracts include them.
-  private detectConflicts(
+  private async detectConflicts(
     projectId: string,
     sourceTaskId: string | undefined,
     type: DeltaType,
     affectedContracts: string[],
-  ): string[] {
+  ): Promise<string[]> {
     if (type !== "contract_change" || affectedContracts.length === 0) return [];
     const conflicts = new Set<string>();
-    for (const task of this.store.listTasks(projectId)) {
+    const tasks = await this.store.listTasks(projectId);
+    for (const task of tasks) {
       if (task.id === sourceTaskId || task.status === "done") continue;
       const references = task.interfaceContracts.some(
         (c) =>
@@ -88,12 +88,12 @@ export class DeltaService {
     return [...conflicts];
   }
 
-  getDeltas(
+  async getDeltas(
     projectId: string,
     sessionId: string,
     since?: string,
-  ): { deltas: ContextDelta[]; requiresAction: boolean } {
-    let deltas = this.store.listDeltas(projectId);
+  ): Promise<{ deltas: ContextDelta[]; requiresAction: boolean }> {
+    let deltas = await this.store.listDeltas(projectId);
     if (since) deltas = deltas.filter((d) => d.timestamp > since);
 
     const requiresAction = deltas.some(
@@ -105,13 +105,13 @@ export class DeltaService {
     return { deltas, requiresAction };
   }
 
-  ack(projectId: string, deltaId: string, sessionId: string): ContextDelta {
-    const delta = this.store.getDelta(deltaId);
+  async ack(projectId: string, deltaId: string, sessionId: string): Promise<ContextDelta> {
+    const delta = await this.store.getDelta(deltaId);
     if (!delta || delta.projectId !== projectId) {
       throw new NotFoundError("delta");
     }
     if (!delta.acknowledgedBy.includes(sessionId)) {
-      return this.store.updateDelta(deltaId, {
+      return await this.store.updateDelta(deltaId, {
         acknowledgedBy: [...delta.acknowledgedBy, sessionId],
       });
     }

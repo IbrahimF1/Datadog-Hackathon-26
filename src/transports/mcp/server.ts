@@ -6,6 +6,8 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { Services } from "../../services/container.js";
 import { annotate, traceSpan } from "../../observability/datadog.js";
+import { newId } from "../../util/id.js";
+import { NotFoundError } from "../../services/errors.js";
 
 type ToolArgs = Record<string, any>;
 
@@ -252,6 +254,215 @@ export function buildMcpServer(services: Services): McpServer {
           ? services.sync.completeSync(a.projectId, a.sessionId, a.commitSha ?? "")
           : services.sync.startSync(a.projectId, a.sessionId),
       ),
+  );
+
+  // --- Dynamic Planning Tools (for autonomous agent replanning) ---
+
+  server.registerTool(
+    "peercode_create_phase",
+    {
+      description: "Create a new phase dynamically during execution. Use when the team discovers a new major milestone or structural boundary.",
+      inputSchema: {
+        projectId: z.string(),
+        sessionId: z.string(),
+        name: z.string(),
+        order: z.number().optional(),
+      },
+    },
+    (a) =>
+      invoke(services, "peercode_create_phase", a, async () => {
+        const phase = await services.liveStore.createPhase({
+          id: newId("phase"),
+          projectId: a.projectId,
+          name: a.name,
+          order: a.order ?? 0,
+          taskIds: [],
+          mergePoint: { reached: false, syncedSessionIds: [] },
+          contractsLocked: false,
+        });
+        services.bus.emit("task_update", a.projectId, {
+          type: "phase_created",
+          phaseId: phase.id,
+          name: phase.name,
+        });
+        return phase;
+      }),
+  );
+
+  server.registerTool(
+    "peercode_create_task",
+    {
+      description: "Create a new task dynamically. Use when discovering unplanned work, splitting tasks, or adding dependencies.",
+      inputSchema: {
+        projectId: z.string(),
+        sessionId: z.string(),
+        phaseId: z.string(),
+        title: z.string(),
+        description: z.string(),
+        assigneeId: z.string().optional(),
+        dependencies: z.array(z.string()).optional(),
+        requiredSkills: z.array(z.string()).optional(),
+      },
+    },
+    (a) =>
+      invoke(services, "peercode_create_task", a, async () => {
+        const task = await services.liveStore.createTask({
+          id: newId("task"),
+          projectId: a.projectId,
+          phaseId: a.phaseId,
+          title: a.title,
+          description: a.description,
+          assigneeId: a.assigneeId,
+          status: "todo",
+          dependencies: a.dependencies ?? [],
+          requiredSkills: a.requiredSkills ?? [],
+          interfaceContracts: [],
+          contextHistory: [],
+        });
+        // Add task to phase
+        const phase = await services.liveStore.getPhase(a.phaseId);
+        if (phase) {
+          await services.liveStore.updatePhase(a.phaseId, {
+            taskIds: [...phase.taskIds, task.id],
+          });
+        }
+        services.bus.emit("task_update", a.projectId, {
+          type: "task_created",
+          taskId: task.id,
+          title: task.title,
+          phaseId: a.phaseId,
+        });
+        return task;
+      }),
+  );
+
+  server.registerTool(
+    "peercode_update_task",
+    {
+      description: "Update a task's properties dynamically. Use for reassigning, changing status, adding dependencies, or modifying scope.",
+      inputSchema: {
+        projectId: z.string(),
+        sessionId: z.string(),
+        taskId: z.string(),
+        title: z.string().optional(),
+        description: z.string().optional(),
+        assigneeId: z.string().optional(),
+        status: z.enum(["todo", "in_progress", "review", "merge_point", "done"]).optional(),
+        dependencies: z.array(z.string()).optional(),
+      },
+    },
+    (a) =>
+      invoke(services, "peercode_update_task", a, async () => {
+        const patch: any = {};
+        if (a.title !== undefined) patch.title = a.title;
+        if (a.description !== undefined) patch.description = a.description;
+        if (a.assigneeId !== undefined) patch.assigneeId = a.assigneeId;
+        if (a.status !== undefined) patch.status = a.status;
+        if (a.dependencies !== undefined) patch.dependencies = a.dependencies;
+        
+        const task = await services.liveStore.updateTask(a.taskId, patch);
+        services.bus.emit("task_update", a.projectId, {
+          type: "task_updated",
+          taskId: task.id,
+          changes: Object.keys(patch),
+        });
+        if (a.status === "merge_point") {
+          services.task.onStatusChange?.(task);
+        }
+        return task;
+      }),
+  );
+
+  server.registerTool(
+    "peercode_move_task",
+    {
+      description: "Move a task to a different phase. Use when replanning work across milestones.",
+      inputSchema: {
+        projectId: z.string(),
+        sessionId: z.string(),
+        taskId: z.string(),
+        targetPhaseId: z.string(),
+      },
+    },
+    (a) =>
+      invoke(services, "peercode_move_task", a, async () => {
+        const task = await services.liveStore.getTask(a.taskId);
+        if (!task) throw new NotFoundError("task");
+        const oldPhaseId = task.phaseId;
+        
+        // Update task's phase
+        const updated = await services.liveStore.updateTask(a.taskId, { phaseId: a.targetPhaseId });
+        
+        // Remove from old phase
+        const oldPhase = await services.liveStore.getPhase(oldPhaseId);
+        if (oldPhase) {
+          await services.liveStore.updatePhase(oldPhaseId, {
+            taskIds: oldPhase.taskIds.filter((id: string) => id !== a.taskId),
+          });
+        }
+        
+        // Add to new phase
+        const newPhase = await services.liveStore.getPhase(a.targetPhaseId);
+        if (newPhase) {
+          await services.liveStore.updatePhase(a.targetPhaseId, {
+            taskIds: [...newPhase.taskIds, a.taskId],
+          });
+        }
+        
+        services.bus.emit("task_update", a.projectId, {
+          type: "task_moved",
+          taskId: a.taskId,
+          fromPhase: oldPhaseId,
+          toPhase: a.targetPhaseId,
+        });
+        return updated;
+      }),
+  );
+
+  server.registerTool(
+    "peercode_replan",
+    {
+      description: "Trigger AI replanning based on current project reality. Call when the team detects significant divergence from plan. Requires ANTHROPIC_API_KEY to be configured on the server.",
+      inputSchema: {
+        projectId: z.string(),
+        sessionId: z.string(),
+        reason: z.string(),
+        context: z.string().optional(),
+      },
+    },
+    (a) =>
+      invoke(services, "peercode_replan", a, async () => {
+        // Get current state for context
+        const phases = await services.liveStore.listPhases(a.projectId);
+        const tasks = await services.liveStore.listTasks(a.projectId);
+        
+        // Push a delta documenting the replan trigger
+        const replanDelta = await services.delta.push({
+          projectId: a.projectId,
+          sessionId: a.sessionId,
+          type: "scope_change",
+          content: `Replanning triggered: ${a.reason}`,
+          severity: "warning",
+        });
+        
+        // Trigger decomposition with current reality as context
+        const updated = await services.planning.decompose(a.projectId);
+        
+        services.bus.emit("task_update", a.projectId, {
+          type: "replanned",
+          reason: a.reason,
+          deltaId: replanDelta.id,
+          phases: updated.phaseIds?.length ?? 0,
+        });
+        
+        return {
+          replanned: true,
+          project: updated,
+          phases,
+          tasks,
+          contextUsed: a.context,
+        };
+      }),
   );
 
   // Nimble web search is only exposed when configured (debates/planning use).

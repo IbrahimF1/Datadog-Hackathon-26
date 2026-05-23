@@ -11,8 +11,8 @@ export class PresenceService {
     private readonly bus: EventBus,
   ) {}
 
-  register(projectId: string, sessionId: string, memberId?: string): Session {
-    const existing = this.store.getSession(sessionId);
+  async register(projectId: string, sessionId: string, memberId?: string): Promise<Session> {
+    const existing = await this.store.getSession(sessionId);
     const session: Session = {
       id: sessionId,
       projectId,
@@ -20,26 +20,25 @@ export class PresenceService {
       connectedAt: existing?.connectedAt ?? now(),
       lastSeen: now(),
     };
-    this.store.upsertSession(session);
+    await this.store.upsertSession(session);
 
     // Link the session id onto the team member record if provided.
     if (memberId) {
-      const project = this.store.getProject(projectId);
+      const project = await this.store.getProject(projectId);
       if (project) {
         const team = project.team.map((m) =>
           m.id === memberId ? { ...m, claudeSessionId: sessionId } : m,
         );
-        this.store.updateProject(projectId, { team });
+        await this.store.updateProject(projectId, { team });
       }
     }
 
-    this.bus.emit("presence", projectId, {
-      sessions: this.store.listSessions(projectId),
-    });
+    const sessions = await this.store.listSessions(projectId);
+    this.bus.emit("presence", projectId, { sessions });
     return session;
   }
 
-  list(projectId: string): Session[] {
-    return this.store.listSessions(projectId);
+  async list(projectId: string): Promise<Session[]> {
+    return await this.store.listSessions(projectId);
   }
 }

@@ -22,17 +22,17 @@ export class LockService {
     private readonly stream: StreamStore,
   ) {}
 
-  // Hierarchical, overlap-aware acquisition. Synchronous read-modify-write =
-  // atomic on Node's single thread (no await gap for a race to slip through).
-  acquire(p: AcquireLockParams): FileLock {
+  // Hierarchical, overlap-aware acquisition.
+  // NOTE: With async stores, lock checking is no longer atomic. Race conditions
+  // possible under high contention. Consider adding distributed locking for production.
+  async acquire(p: AcquireLockParams): Promise<FileLock> {
     if (p.lineStart !== undefined && p.lineEnd !== undefined && p.lineEnd < p.lineStart) {
       throw new ValidationError("lineEnd must be >= lineStart");
     }
 
     const isFileLevel = p.lineStart === undefined;
-    const samePath = this.store
-      .listLocks(p.projectId)
-      .filter((l) => l.path === p.path);
+    const allLocks = await this.store.listLocks(p.projectId);
+    const samePath = allLocks.filter((l) => l.path === p.path);
 
     for (const l of samePath) {
       const existingIsFile = l.lineStart === undefined;
@@ -74,7 +74,7 @@ export class LockService {
       lockedAt: now(),
       expiresAt: new Date(Date.now() + config.lockTtlMs).toISOString(),
     };
-    this.store.addLock(lock);
+    await this.store.addLock(lock);
     this.bus.emit("lock_changed", p.projectId, { action: "acquired", lock });
     void this.stream.appendAudit({
       projectId: p.projectId,
@@ -86,13 +86,13 @@ export class LockService {
     return lock;
   }
 
-  release(projectId: string, sessionId: string, lockId: string): void {
-    const lock = this.store.getLock(lockId);
+  async release(projectId: string, sessionId: string, lockId: string): Promise<void> {
+    const lock = await this.store.getLock(lockId);
     if (!lock) throw new NotFoundError("lock");
     if (lock.lockedBy !== sessionId) {
       throw new ValidationError("lock is owned by another session");
     }
-    this.store.removeLock(lockId);
+    await this.store.removeLock(lockId);
     this.bus.emit("lock_changed", projectId, {
       action: "released",
       lockId,
@@ -107,19 +107,19 @@ export class LockService {
     });
   }
 
-  heartbeat(_projectId: string, sessionId: string, lockId: string): FileLock {
-    const lock = this.store.getLock(lockId);
+  async heartbeat(_projectId: string, sessionId: string, lockId: string): Promise<FileLock> {
+    const lock = await this.store.getLock(lockId);
     if (!lock) throw new NotFoundError("lock");
     if (lock.lockedBy !== sessionId) {
       throw new ValidationError("lock is owned by another session");
     }
     lock.expiresAt = new Date(Date.now() + config.lockTtlMs).toISOString();
-    this.store.touchSession(sessionId);
+    await this.store.touchSession(sessionId);
     return lock;
   }
 
-  list(projectId: string): FileLock[] {
-    return this.store.listLocks(projectId);
+  async list(projectId: string): Promise<FileLock[]> {
+    return await this.store.listLocks(projectId);
   }
 }
 

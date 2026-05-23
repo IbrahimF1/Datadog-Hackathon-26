@@ -1,5 +1,6 @@
 import { InMemoryLiveStore } from "../storage/inMemoryLiveStore.js";
 import type { LiveStore } from "../storage/liveStore.js";
+import { ClickHouseLiveStore } from "../storage/clickhouseLiveStore.js";
 import { ClickHouseStreamStore } from "../storage/clickhouseStreamStore.js";
 import type { StreamStore } from "../storage/streamStore.js";
 import { AnthropicClient } from "../integrations/anthropicClient.js";
@@ -33,8 +34,19 @@ export interface Services {
 
 // Composition root. Wires storage, integrations, and services, including the
 // one cross-service hook (task -> sync barrier re-evaluation).
-export function buildServices(): Services {
-  const liveStore: LiveStore = new InMemoryLiveStore();
+export async function buildServices(): Promise<Services> {
+  // Try ClickHouse first, fallback to in-memory
+  let liveStore: LiveStore;
+  const chStore = new ClickHouseLiveStore();
+  try {
+    await chStore.init();
+    liveStore = chStore;
+    console.log("[services] using ClickHouse for live state persistence");
+  } catch {
+    liveStore = new InMemoryLiveStore();
+    console.log("[services] using in-memory store (ClickHouse unavailable)");
+  }
+
   const streamStore: StreamStore = new ClickHouseStreamStore();
   const bus = new EventBus(streamStore);
 

@@ -34,7 +34,7 @@ export interface ProjectFullState {
 export class ProjectService {
   constructor(private readonly store: LiveStore) {}
 
-  create(p: CreateProjectParams): Project {
+  async create(p: CreateProjectParams): Promise<Project> {
     if (!p.name?.trim()) throw new ValidationError("project name is required");
     const team: TeamMember[] = (p.team ?? []).map((m) => ({
       id: newId("member"),
@@ -57,37 +57,46 @@ export class ProjectService {
       createdAt: ts,
       updatedAt: ts,
     };
-    return this.store.createProject(project);
+    return await this.store.createProject(project);
   }
 
-  get(id: string): Project {
-    const project = this.store.getProject(id);
+  async get(id: string): Promise<Project> {
+    const project = await this.store.getProject(id);
     if (!project) throw new NotFoundError("project");
     return project;
   }
 
-  list(): Project[] {
-    return this.store.listProjects();
+  async list(): Promise<Project[]> {
+    return await this.store.listProjects();
   }
 
-  getFullState(id: string): ProjectFullState {
-    const project = this.get(id);
+  async getFullState(id: string): Promise<ProjectFullState> {
+    const [project, phases, tasks, locks, deltas, debates, sessions] = await Promise.all([
+      this.store.getProject(id),
+      this.store.listPhases(id),
+      this.store.listTasks(id),
+      this.store.listLocks(id),
+      this.store.listDeltas(id),
+      this.store.listDebates(id),
+      this.store.listSessions(id),
+    ]);
+    if (!project) throw new NotFoundError("project");
     return {
       project,
-      phases: this.store.listPhases(id),
-      tasks: this.store.listTasks(id),
-      locks: this.store.listLocks(id),
-      deltas: this.store.listDeltas(id),
-      debates: this.store.listDebates(id),
-      sessions: this.store.listSessions(id),
+      phases,
+      tasks,
+      locks,
+      deltas,
+      debates,
+      sessions,
     };
   }
 
-  addTeamMember(
+  async addTeamMember(
     projectId: string,
     member: { name: string; role: Role; skills?: string[] },
-  ): TeamMember {
-    const project = this.get(projectId);
+  ): Promise<TeamMember> {
+    const project = await this.get(projectId);
     const m: TeamMember = {
       id: newId("member"),
       name: member.name,
@@ -95,33 +104,33 @@ export class ProjectService {
       skills: member.skills ?? [],
       confidenceScores: {},
     };
-    this.store.updateProject(projectId, { team: [...project.team, m] });
+    await this.store.updateProject(projectId, { team: [...project.team, m] });
     return m;
   }
 
-  setStatus(id: string, status: Project["status"]): Project {
-    this.get(id);
-    return this.store.updateProject(id, { status });
+  async setStatus(id: string, status: Project["status"]): Promise<Project> {
+    await this.get(id);
+    return await this.store.updateProject(id, { status });
   }
 
-  getQuestions(projectId: string, memberId: string): PlanningQuestion[] {
-    const project = this.get(projectId);
+  async getQuestions(projectId: string, memberId: string): Promise<PlanningQuestion[]> {
+    const project = await this.get(projectId);
     return project.questions.filter((q) => q.memberId === memberId);
   }
 
-  submitAnswers(
+  async submitAnswers(
     projectId: string,
     memberId: string,
     answers: { question: string; answer: string }[],
-  ): PlanningQuestion[] {
-    const project = this.get(projectId);
+  ): Promise<PlanningQuestion[]> {
+    const project = await this.get(projectId);
     const byQuestion = new Map(answers.map((a) => [a.question, a.answer]));
     const questions = project.questions.map((q) =>
       q.memberId === memberId && byQuestion.has(q.question)
         ? { ...q, answer: byQuestion.get(q.question) }
         : q,
     );
-    this.store.updateProject(projectId, { questions });
+    await this.store.updateProject(projectId, { questions });
     return questions.filter((q) => q.memberId === memberId);
   }
 }

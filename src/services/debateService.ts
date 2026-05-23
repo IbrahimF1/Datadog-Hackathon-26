@@ -33,12 +33,12 @@ export class DebateService {
     private readonly stream: StreamStore,
   ) {}
 
-  start(p: StartDebateParams): Debate {
-    if (!this.store.getProject(p.projectId)) {
+  async start(p: StartDebateParams): Promise<Debate> {
+    if (!(await this.store.getProject(p.projectId))) {
       throw new NotFoundError("project");
     }
     const delta = p.conflictingDeltaId
-      ? this.store.getDelta(p.conflictingDeltaId)
+      ? await this.store.getDelta(p.conflictingDeltaId)
       : undefined;
     const responder = p.responderSessionId ?? delta?.sourceSessionId;
 
@@ -71,14 +71,14 @@ export class DebateService {
       lastActivityAt: firstMessage.timestamp,
     };
 
-    this.store.createDebate(debate);
+    await this.store.createDebate(debate);
     void this.stream.appendDebateMessage(firstMessage);
     this.bus.emit("debate_update", p.projectId, { debate });
     return debate;
   }
 
-  respond(p: RespondDebateParams): Debate {
-    const debate = this.store.getDebate(p.debateId);
+  async respond(p: RespondDebateParams): Promise<Debate> {
+    const debate = await this.store.getDebate(p.debateId);
     if (!debate || debate.projectId !== p.projectId) {
       throw new NotFoundError("debate");
     }
@@ -119,7 +119,7 @@ export class DebateService {
       status = "escalated"; // TECH_SPEC §8: max 5 rounds before escalation
     }
 
-    const updated = this.store.updateDebate(debate.id, {
+    const updated = await this.store.updateDebate(debate.id, {
       messages: [...debate.messages, message],
       round,
       status,
@@ -128,29 +128,29 @@ export class DebateService {
     });
 
     if (status === "resolved" && debate.conflictingDeltaId) {
-      this.acknowledgeResolvedDelta(debate);
+      await this.acknowledgeResolvedDelta(debate);
     }
 
     this.bus.emit("debate_update", p.projectId, { debate: updated });
     return updated;
   }
 
-  get(projectId: string, debateId?: string): Debate[] {
+  async get(projectId: string, debateId?: string): Promise<Debate[]> {
     if (debateId) {
-      const d = this.store.getDebate(debateId);
+      const d = await this.store.getDebate(debateId);
       return d && d.projectId === projectId ? [d] : [];
     }
-    return this.store.listDebates(projectId);
+    return await this.store.listDebates(projectId);
   }
 
   // Sweeper hook: escalate debates idle longer than the timeout.
-  escalateTimedOut(projectId: string): Debate[] {
+  async escalateTimedOut(projectId: string): Promise<Debate[]> {
     const cutoff = Date.now() - config.debateTimeoutMs;
     const escalated: Debate[] = [];
-    for (const d of this.store.listDebates(projectId)) {
+    for (const d of await this.store.listDebates(projectId)) {
       if (d.status !== "active") continue;
       if (new Date(d.lastActivityAt).getTime() < cutoff) {
-        const u = this.store.updateDebate(d.id, { status: "escalated" });
+        const u = await this.store.updateDebate(d.id, { status: "escalated" });
         this.bus.emit("debate_update", projectId, { debate: u });
         escalated.push(u);
       }
@@ -158,13 +158,13 @@ export class DebateService {
     return escalated;
   }
 
-  private acknowledgeResolvedDelta(debate: Debate): void {
-    const delta = this.store.getDelta(debate.conflictingDeltaId!);
+  private async acknowledgeResolvedDelta(debate: Debate): Promise<void> {
+    const delta = await this.store.getDelta(debate.conflictingDeltaId!);
     if (!delta) return;
     const ackers = new Set(delta.acknowledgedBy);
     ackers.add(debate.initiatorSessionId);
     if (debate.responderSessionId) ackers.add(debate.responderSessionId);
-    this.store.updateDelta(delta.id, { acknowledgedBy: [...ackers] });
+    await this.store.updateDelta(delta.id, { acknowledgedBy: [...ackers] });
   }
 }
 

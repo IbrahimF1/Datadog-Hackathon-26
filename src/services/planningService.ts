@@ -15,7 +15,7 @@ export class PlanningService {
   // Calls Claude to decompose the project, then materialises phases/tasks/
   // contracts/questions into the live store. Replaces any prior plan.
   async decompose(projectId: string): Promise<Project> {
-    const project = this.store.getProject(projectId);
+    const project = await this.store.getProject(projectId);
     if (!project) throw new NotFoundError("project");
 
     const memberName = (id: string) =>
@@ -42,7 +42,7 @@ export class PlanningService {
     const pendingDeps: { taskId: string; depTitles: string[] }[] = [];
     const phaseIds: string[] = [];
 
-    result.phases.forEach((ph, idx) => {
+    for (const [idx, ph] of result.phases.entries()) {
       const phaseId = newId("phase");
       const taskIds: string[] = [];
 
@@ -73,7 +73,7 @@ export class PlanningService {
           interfaceContracts: contracts,
           contextHistory: [],
         };
-        this.store.createTask(task);
+        await this.store.createTask(task);
         titleToTaskId.set(pt.title, taskId);
         taskIds.push(taskId);
         pendingDeps.push({ taskId, depTitles: pt.dependencies });
@@ -88,16 +88,16 @@ export class PlanningService {
         mergePoint: { reached: false, syncedSessionIds: [] },
         contractsLocked: false,
       };
-      this.store.createPhase(phase);
+      await this.store.createPhase(phase);
       phaseIds.push(phaseId);
-    });
+    }
 
     // Resolve dependency titles -> task ids (unknown titles dropped).
     for (const { taskId, depTitles } of pendingDeps) {
       const deps = depTitles
         .map((t) => titleToTaskId.get(t))
         .filter((id): id is string => !!id);
-      this.store.updateTask(taskId, { dependencies: deps });
+      await this.store.updateTask(taskId, { dependencies: deps });
     }
 
     const questions = result.questions.map((q) => ({
@@ -105,7 +105,7 @@ export class PlanningService {
       question: q.question,
     }));
 
-    const updated = this.store.updateProject(projectId, {
+    const updated = await this.store.updateProject(projectId, {
       phaseIds,
       questions,
       status: "active",

@@ -13,24 +13,24 @@ export class TaskService {
     private readonly bus: EventBus,
   ) {}
 
-  list(projectId: string): Task[] {
-    return this.store.listTasks(projectId);
+  async list(projectId: string): Promise<Task[]> {
+    return await this.store.listTasks(projectId);
   }
 
-  get(taskId: string): Task {
-    const task = this.store.getTask(taskId);
+  async get(taskId: string): Promise<Task> {
+    const task = await this.store.getTask(taskId);
     if (!task) throw new NotFoundError("task");
     return task;
   }
 
-  assign(projectId: string, taskId: string, memberId: string): Task {
-    const task = this.get(taskId);
+  async assign(projectId: string, taskId: string, memberId: string): Promise<Task> {
+    const task = await this.get(taskId);
     if (task.projectId !== projectId) throw new NotFoundError("task");
-    const project = this.store.getProject(projectId);
+    const project = await this.store.getProject(projectId);
     if (project && !project.team.some((m) => m.id === memberId)) {
       throw new ValidationError("member is not on the project team");
     }
-    const updated = this.store.updateTask(taskId, { assigneeId: memberId });
+    const updated = await this.store.updateTask(taskId, { assigneeId: memberId });
     this.bus.emit("task_update", projectId, {
       taskId,
       status: updated.status,
@@ -39,10 +39,10 @@ export class TaskService {
     return updated;
   }
 
-  setStatus(projectId: string, taskId: string, status: TaskStatus): Task {
-    const task = this.get(taskId);
+  async setStatus(projectId: string, taskId: string, status: TaskStatus): Promise<Task> {
+    const task = await this.get(taskId);
     if (task.projectId !== projectId) throw new NotFoundError("task");
-    const updated = this.store.updateTask(taskId, { status });
+    const updated = await this.store.updateTask(taskId, { status });
     this.bus.emit("task_update", projectId, {
       taskId,
       status,

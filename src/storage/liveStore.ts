@@ -10,58 +10,57 @@ import type {
   Task,
 } from "../domain/types.js";
 
-// Mutable, live coordination state. Implementations are SYNCHRONOUS so that
-// read-modify-write sequences (lock acquisition, sync-token claim) are atomic
-// on Node's single thread with no interleaving await points. Moving to an
-// async store later requires an explicit locking strategy.
+// Mutable, live coordination state. Implementations support both SYNC (InMemory)
+// and ASYNC (ClickHouse) patterns. For async stores, callers must await to ensure
+// read-modify-write sequences complete before next operation.
 export interface LiveStore {
   // Projects
-  createProject(p: Project): Project;
-  getProject(id: string): Project | undefined;
-  updateProject(id: string, patch: Partial<Project>): Project;
-  listProjects(): Project[];
+  createProject(p: Project): Promise<Project> | Project;
+  getProject(id: string): Promise<Project | undefined> | Project | undefined;
+  updateProject(id: string, patch: Partial<Project>): Promise<Project> | Project;
+  listProjects(): Promise<Project[]> | Project[];
 
   // Phases
-  createPhase(p: Phase): Phase;
-  getPhase(id: string): Phase | undefined;
-  updatePhase(id: string, patch: Partial<Phase>): Phase;
-  listPhases(projectId: string): Phase[];
+  createPhase(p: Phase): Promise<Phase> | Phase;
+  getPhase(id: string): Promise<Phase | undefined> | Phase | undefined;
+  updatePhase(id: string, patch: Partial<Phase>): Promise<Phase> | Phase;
+  listPhases(projectId: string): Promise<Phase[]> | Phase[];
 
   // Tasks
-  createTask(t: Task): Task;
-  getTask(id: string): Task | undefined;
-  updateTask(id: string, patch: Partial<Task>): Task;
-  listTasks(projectId: string): Task[];
+  createTask(t: Task): Promise<Task> | Task;
+  getTask(id: string): Promise<Task | undefined> | Task | undefined;
+  updateTask(id: string, patch: Partial<Task>): Promise<Task> | Task;
+  listTasks(projectId: string): Promise<Task[]> | Task[];
 
   // Locks
-  addLock(l: FileLock): FileLock;
-  getLock(lockId: string): FileLock | undefined;
-  removeLock(lockId: string): void;
-  listLocks(projectId: string): FileLock[];
-  listAllLocks(): FileLock[];
+  addLock(l: FileLock): Promise<FileLock> | FileLock;
+  getLock(lockId: string): Promise<FileLock | undefined> | FileLock | undefined;
+  removeLock(lockId: string): Promise<void> | void;
+  listLocks(projectId: string): Promise<FileLock[]> | FileLock[];
+  listAllLocks(): Promise<FileLock[]> | FileLock[];
 
   // Sessions
-  upsertSession(s: Session): Session;
-  getSession(id: string): Session | undefined;
-  touchSession(id: string): void;
-  listSessions(projectId: string): Session[];
+  upsertSession(s: Session): Promise<Session> | Session;
+  getSession(id: string): Promise<Session | undefined> | Session | undefined;
+  touchSession(id: string): Promise<void> | void;
+  listSessions(projectId: string): Promise<Session[]> | Session[];
 
   // Deltas (current mutable state; history is appended to the StreamStore)
-  addDelta(d: ContextDelta): ContextDelta;
-  getDelta(id: string): ContextDelta | undefined;
-  updateDelta(id: string, patch: Partial<ContextDelta>): ContextDelta;
-  listDeltas(projectId: string): ContextDelta[];
+  addDelta(d: ContextDelta): Promise<ContextDelta> | ContextDelta;
+  getDelta(id: string): Promise<ContextDelta | undefined> | ContextDelta | undefined;
+  updateDelta(id: string, patch: Partial<ContextDelta>): Promise<ContextDelta> | ContextDelta;
+  listDeltas(projectId: string): Promise<ContextDelta[]> | ContextDelta[];
 
   // Debates
-  createDebate(d: Debate): Debate;
-  getDebate(id: string): Debate | undefined;
-  updateDebate(id: string, patch: Partial<Debate>): Debate;
-  listDebates(projectId: string): Debate[];
+  createDebate(d: Debate): Promise<Debate> | Debate;
+  getDebate(id: string): Promise<Debate | undefined> | Debate | undefined;
+  updateDebate(id: string, patch: Partial<Debate>): Promise<Debate> | Debate;
+  listDebates(projectId: string): Promise<Debate[]> | Debate[];
 
   // Sync coordination
-  getSyncToken(projectId: string): SyncToken | undefined;
-  setSyncToken(token: SyncToken): void;
-  clearSyncToken(projectId: string): void;
-  addSyncRecord(r: SyncRecord): void;
-  listSyncRecords(projectId: string): SyncRecord[];
+  getSyncToken(projectId: string): Promise<SyncToken | undefined> | SyncToken | undefined;
+  setSyncToken(token: SyncToken): Promise<void> | void;
+  clearSyncToken(projectId: string): Promise<void> | void;
+  addSyncRecord(r: SyncRecord): Promise<void> | void;
+  listSyncRecords(projectId: string): Promise<SyncRecord[]> | SyncRecord[];
 }

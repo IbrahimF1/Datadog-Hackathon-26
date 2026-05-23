@@ -20,7 +20,7 @@ async function main(): Promise<void> {
   // Datadog LLM Observability first.
   initObservability();
 
-  const services = buildServices();
+  const services = await buildServices();
   await services.streamStore.init();
   services.sweeper.start();
 

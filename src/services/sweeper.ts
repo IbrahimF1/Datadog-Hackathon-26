@@ -24,11 +24,16 @@ export class Sweeper {
     this.timer = null;
   }
 
-  tick(): void {
+  private tick(): void {
+    void this.runSweep();
+  }
+
+  private async runSweep(): Promise<void> {
     const nowMs = Date.now();
-    for (const lock of this.store.listAllLocks()) {
+    const locks = await this.store.listAllLocks();
+    for (const lock of locks) {
       if (new Date(lock.expiresAt).getTime() < nowMs) {
-        this.store.removeLock(lock.lockId);
+        await this.store.removeLock(lock.lockId);
         this.bus.emit("lock_changed", lock.projectId, {
           action: "expired",
           lockId: lock.lockId,
@@ -36,8 +41,9 @@ export class Sweeper {
         });
       }
     }
-    for (const project of this.store.listProjects()) {
-      this.debates.escalateTimedOut(project.id);
+    const projects = await this.store.listProjects();
+    for (const project of projects) {
+      await this.debates.escalateTimedOut(project.id);
     }
   }
 }
