@@ -56,12 +56,17 @@ export class PlanningService {
           locked: false,
           approvedBy: [],
         }));
+        // Resolve assignee: try suggested name first, fallback to skill matching
+        const assigneeId = pt.suggestedAssignee
+          ? matchMemberId(project, pt.suggestedAssignee)
+          : findBestAssigneeBySkills(project, pt.requiredSkills);
         const task: Task = {
           id: taskId,
           projectId,
           phaseId,
           title: pt.title,
           description: pt.description,
+          assigneeId,
           status: "todo",
           dependencies: [],
           requiredSkills: pt.requiredSkills,
@@ -123,4 +128,28 @@ function matchMemberId(project: Project, name: string): string {
     (m) => m.name.toLowerCase().includes(lower) || lower.includes(m.name.toLowerCase()),
   );
   return partial?.id ?? "";
+}
+
+// Fallback: find best assignee by skill match and workload balance
+function findBestAssigneeBySkills(project: Project, requiredSkills: string[]): string | undefined {
+  if (project.team.length === 0) return undefined;
+  if (project.team.length === 1) return project.team[0].id;
+  if (requiredSkills.length === 0) return project.team[0].id;
+
+  // Score each member by skill match (case-insensitive)
+  const memberScores = project.team.map((member) => {
+    const skillMatches = requiredSkills.filter((reqSkill) =>
+      member.skills.some(
+        (memberSkill) => memberSkill.toLowerCase() === reqSkill.toLowerCase()
+      )
+    ).length;
+    return { memberId: member.id, score: skillMatches };
+  });
+
+  // Find max score
+  const maxScore = Math.max(...memberScores.map((m) => m.score));
+  const topCandidates = memberScores.filter((m) => m.score === maxScore);
+
+  // If tie, pick first (could be enhanced with workload tracking)
+  return topCandidates[0]?.memberId;
 }

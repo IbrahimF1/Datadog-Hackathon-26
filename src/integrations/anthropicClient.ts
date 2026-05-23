@@ -17,6 +17,7 @@ export interface PlanTask {
   requiredSkills: string[];
   interfaceContracts: PlanContract[];
   mergePoint: boolean;
+  suggestedAssignee?: string; // team member name for initial assignment
 }
 export interface PlanPhase {
   name: string;
@@ -37,9 +38,9 @@ const MAX_TURNS = 8;
 
 const SYSTEM_PROMPT = `You are PeerCode Architect, an expert at breaking projects into parallelizable workstreams for a team whose members each run a Claude Code session.
 
-Your job: decompose the project into PHASES (in execution order), each containing TASKS. For each task provide title, description, dependencies (titles of other tasks), required skills, and any interface contracts that cross a boundary (API endpoints, type definitions, database schemas, function signatures). Mark mergePoint=true for tasks whose contracts must lock at a phase boundary.
+Your job: decompose the project into PHASES (in execution order), each containing TASKS. For each task provide title, description, dependencies (titles of other tasks), required skills, interface contracts, and the SUGGESTED ASSIGNEE (name of the team member whose skills best match the required skills). Mark mergePoint=true for tasks whose contracts must lock at a phase boundary.
 
-Constraints: minimize blocking dependencies, maximize parallel work within a phase, lock interfaces at phase boundaries, and respect team skills. Also produce a short list of clarifying QUESTIONS addressed to specific team members to refine assignments.
+Constraints: minimize blocking dependencies, maximize parallel work within a phase, lock interfaces at phase boundaries, and assign each task to the team member whose skills best fit (spread work evenly across the team). Also produce a short list of clarifying QUESTIONS addressed to specific team members to refine assignments.
 
 You may call web_search to ground decisions in current facts about frameworks, libraries, or APIs. When ready, you MUST call submit_plan exactly once with the full structured plan.`;
 
@@ -84,6 +85,7 @@ const submitPlanTool = {
                     },
                   },
                   mergePoint: { type: "boolean" },
+                  suggestedAssignee: { type: "string", description: "Name of the team member whose skills best match this task's required skills" },
                 },
                 required: [
                   "title",
